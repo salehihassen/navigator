@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stop the navigator-dev containers. Keeps data; use scripts/dev-reset to wipe it.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+docker compose -p navigator-dev -f "$ROOT/deploy/dev/compose.yaml" --env-file "$ROOT/.dev/navigator.env" down

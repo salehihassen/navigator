@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Refuse commits that contain secrets. Enable once per clone: git config core.hooksPath scripts/hooks
+# Uses a local gitleaks >= 8.19 (has the `git` subcommand); otherwise the same pinned image CI uses.
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+if command -v gitleaks >/dev/null && gitleaks git --help >/dev/null 2>&1; then
+  exec gitleaks git --pre-commit --staged --redact --no-banner "$ROOT"
+fi
+if command -v docker >/dev/null; then
+  exec docker run --rm -v "$ROOT:/repo:ro" zricethezav/gitleaks:v8.30.1 git --pre-commit --staged --redact --no-banner /repo
+fi
+if command -v gitleaks >/dev/null; then  # older gitleaks
+  exec gitleaks protect --staged --redact --no-banner --source "$ROOT"
+fi
+echo "pre-commit: install gitleaks >= 8.19 or docker to scan for secrets" >&2
+exit 1

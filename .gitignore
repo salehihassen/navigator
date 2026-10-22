@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+data/
+media-cache/
+node_modules/
+.dev/
+
+# machine-specific notes (hosts, ports, paths), never published
+docs/private/
+frontend/dist/

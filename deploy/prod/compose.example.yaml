@@ -1,0 +1,46 @@
+# Services to add to the server's docker-compose file. Paths are relative to that
+# file; ./navigator holds data and env files (see docs/SETUP.md). The navigator repo
+# is checked out separately (for deploy/initdb, deploy/prod/garage.toml, scripts/).
+services:
+  navigator-db:
+    image: postgres:18.6-alpine3.24
+    container_name: navigator-db
+    restart: unless-stopped
+    env_file: ./navigator/db.env
+    volumes:
+      - ./navigator/postgres:/var/lib/postgresql
+      - ${NAVIGATOR_REPO:-../repos/navigator}/deploy/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    shm_size: 128mb
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=40"]
+
+  navigator-storage:
+    image: dxflrs/garage:v2.4.1
+    container_name: navigator-storage
+    restart: unless-stopped
+    env_file: ./navigator/storage.env
+    ports:
+      - "127.0.0.1:3900:3900"   # S3 API, published only for Caddy's files.<domain> site
+    volumes:
+      - ${NAVIGATOR_REPO:-../repos/navigator}/deploy/prod/garage.toml:/etc/garage.toml:ro
+      - ./navigator/media:/var/lib/garage
+
+  navigator:
+    image: ghcr.io/salehihassen/navigator:${NAVIGATOR_TAG:-main}
+    container_name: navigator
+    restart: unless-stopped
+    env_file: ./navigator/navigator.env
+    depends_on:
+      navigator-db: { condition: service_healthy }
+      navigator-storage: { condition: service_started }
+    ports:
+      - "127.0.0.1:8091:8000"   # Caddy → app
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m

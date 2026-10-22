@@ -1,0 +1,26 @@
+# Replace the hostnames. If Caddy runs in Docker on the same network, use
+# navigator:8000 and navigator-storage:3900 instead of the 127.0.0.1 ports.
+
+navigator.example.com {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	request_body {
+		max_size 1MB # media never passes through the app (signed URLs)
+	}
+	reverse_proxy 127.0.0.1:8091
+}
+
+# Signed-URL uploads/downloads straight to the private Garage bucket.
+files.navigator.example.com {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Content-Security-Policy "sandbox; default-src 'none'"
+		Referrer-Policy no-referrer
+		-Server
+	}
+	request_body {
+		max_size 210MB
+	}
+	reverse_proxy 127.0.0.1:3900
+}

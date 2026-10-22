@@ -1,0 +1,14 @@
+# Run from the trip-atlas repo root:  docker compose -f deploy/mockup/compose.yaml up -d --build
+services:
+  trip-atlas-mockup:
+    build:
+      context: ../..
+      dockerfile: deploy/mockup/Dockerfile
+    container_name: trip-atlas-mockup
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:80"   # put your reverse proxy in front; use "8090:80" to expose it directly
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 3s

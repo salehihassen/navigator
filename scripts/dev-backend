@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Migrate, then run the API with auto-reload on 127.0.0.1:8930 using .dev/navigator.env.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+set -a; source "$ROOT/.dev/navigator.env"; set +a
+cd "$ROOT/backend"
+uv run navigator migrate
+exec uv run navigator serve --reload --port 8930 "$@"

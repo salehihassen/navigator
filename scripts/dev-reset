@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Wipe the local dev database and media: removes the navigator-dev containers and
+# their volumes, nothing else. Never prunes, never touches other compose projects.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FILE="$ROOT/deploy/dev/compose.yaml"
+PROJECT=navigator-dev
+
+grep -qx "name: $PROJECT" "$FILE" || { echo "refusing: $FILE is not the $PROJECT project" >&2; exit 1; }
+volumes=$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT")
+echo "This deletes the $PROJECT containers and volumes:"; echo "${volumes:-  (none)}" | sed 's/^/  /'
+if [[ "${1:-}" != "--yes" ]]; then
+  read -r -p "Type '$PROJECT' to continue: " answer
+  [[ "$answer" == "$PROJECT" ]] || { echo "aborted"; exit 1; }
+fi
+docker compose -p "$PROJECT" -f "$FILE" --env-file "$ROOT/.dev/navigator.env" down -v
+echo "done. .dev/navigator.env is kept; scripts/dev-up recreates everything with it."

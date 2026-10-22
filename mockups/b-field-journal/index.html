@@ -1,0 +1,1385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trip Atlas — Field Journal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="../shared/data.js"></script>
+<style>
+  :root {
+    --paper: #f6f1e7;
+    --paper-2: #efe8da;
+    --card: #fbf8f2;
+    --ink: #2a2620;
+    --ink-2: #4a433a;
+    --muted: #857a6c;
+    --rule: #ddd3c1;
+    --accent: #b5532f;
+    --accent-soft: #f1ddd0;
+    --serif: "Fraunces", Georgia, "Times New Roman", serif;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --header-h: 64px;
+    --radius: 3px;
+    --shadow: 0 1px 2px rgba(42,38,32,.06), 0 8px 24px rgba(42,38,32,.08);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  /* subtle paper grain */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .35;
+    background-image: radial-gradient(rgba(120,100,70,.06) 1px, transparent 1px);
+    background-size: 3px 3px;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  input, select, textarea { font: inherit; color: inherit; }
+  a { color: inherit; }
+
+  /* ---------- Header ---------- */
+  header.top {
+    position: sticky; top: 0; z-index: 50; height: var(--header-h);
+    display: flex; align-items: center; gap: 28px; padding: 0 28px;
+    background: rgba(246,241,231,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  .brand .mark {
+    width: 26px; height: 26px; border: 1.5px solid var(--ink); border-radius: 50%;
+    align-self: center; position: relative; flex: none;
+  }
+  .brand .mark::before, .brand .mark::after {
+    content: ""; position: absolute; inset: 3px 9px; border: 1.2px solid var(--ink); border-radius: 50%;
+  }
+  .brand .mark::after { inset: 11px 1px auto; height: 0; border-width: 1.2px 0 0; border-radius: 0; }
+  .brand h1 { font: italic 500 24px/1 var(--serif); margin: 0; letter-spacing: -.01em; }
+  .brand small { font: 500 10.5px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  nav.tabs { display: flex; gap: 22px; height: 100%; }
+  nav.tabs button {
+    background: none; border: 0; padding: 0 2px; height: 100%; color: var(--muted);
+    font-weight: 500; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  nav.tabs button:hover { color: var(--ink); }
+  nav.tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+  nav.tabs .count { font: 400 11px var(--sans); color: var(--muted); margin-left: 4px; }
+  .spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 99px; padding: 3px; background: var(--card); }
+  .seg button { border: 0; background: none; padding: 5px 14px; border-radius: 99px; font-size: 13px; color: var(--muted); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .seg button.on { background: var(--ink); color: var(--paper); }
+  .btn {
+    border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+    padding: 8px 16px; border-radius: 99px; font-size: 13.5px; font-weight: 500; white-space: nowrap;
+  }
+  .btn:hover { background: #000; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--rule); }
+  .btn.ghost:hover { border-color: var(--ink); }
+  .btn.danger { background: #9c2f22; border-color: #9c2f22; }
+  .btn:disabled { opacity: .4; cursor: default; }
+
+  /* ---------- Layout ---------- */
+  .layout { position: relative; z-index: 1; display: grid; grid-template-columns: 45% 55%; }
+  .journal { padding: 56px 56px 30vh 56px; min-width: 0; }
+  .mapcol { position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); padding: 16px 16px 16px 0; }
+  .mapframe { position: relative; height: 100%; border-radius: 6px; overflow: hidden; border: 1px solid var(--rule); background: #eae6dd; box-shadow: var(--shadow); }
+  #map { position: absolute; inset: 0; }
+
+  /* ---------- Journal ---------- */
+  .intro { padding-bottom: 36px; border-bottom: 1px solid var(--ink); margin-bottom: 8px; }
+  .kicker { font: 600 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .intro h2 { font: 400 48px/1.04 var(--serif); letter-spacing: -.02em; margin: 14px 0 18px; font-variation-settings: "opsz" 144; }
+  .intro h2 em { font-weight: 300; }
+  .stats { display: flex; gap: 32px; flex-wrap: wrap; }
+  .stats div { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+  .stats b { display: block; font: 400 30px/1.1 var(--serif); color: var(--ink); }
+
+  .chapter { display: flex; align-items: center; gap: 14px; margin: 48px 0 6px; }
+  .chapter span { font: 600 11px/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .chapter::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+
+  article.trip { padding: 40px 0 52px; border-bottom: 1px solid var(--rule); scroll-margin-top: calc(var(--header-h) + 20px); transition: opacity .4s; }
+  article.trip:last-child { border-bottom: 0; }
+  .trip .eyebrow { display: flex; align-items: center; gap: 10px; font: 500 12px/1 var(--sans); color: var(--muted); letter-spacing: .05em; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+  .dot.planned { background: transparent !important; border: 2px solid; }
+  .pill { font: 600 10.5px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; padding: 5px 8px; border-radius: 99px; background: var(--paper-2); color: var(--ink-2); }
+  .pill.count { background: var(--accent); color: #fff; }
+  .trip h3 { font: 400 42px/1.05 var(--serif); letter-spacing: -.02em; margin: 14px 0 10px; font-variation-settings: "opsz" 144; cursor: pointer; }
+  .trip h3:hover { color: var(--accent); }
+  .trip .dates { font: italic 400 16px/1.4 var(--serif); color: var(--ink-2); }
+  .trip .dates .sep { color: var(--rule); margin: 0 8px; font-style: normal; }
+  .itinerary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; margin: 16px 0 12px; font-size: 13.5px; }
+  .itinerary .stop { display: inline-flex; align-items: center; gap: 6px; padding: 2px 0; background: none; border: 0; }
+  .itinerary .stop:hover .nm { text-decoration: underline; text-underline-offset: 3px; }
+  .itinerary .n { width: 18px; height: 18px; border-radius: 50%; color: #fff; display: inline-grid; place-items: center; font: 600 10px/1 var(--sans); }
+  .itinerary .planned .n { background: var(--card) !important; border: 1.5px solid; }
+  .itinerary .arrow { color: var(--muted); margin: 0 3px; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tag { font-size: 12px; color: var(--ink-2); border: 1px solid var(--rule); border-radius: 99px; padding: 2px 10px; }
+  .tag::before { content: "#"; color: var(--muted); }
+  .summary { font: 400 18px/1.55 var(--serif); color: var(--ink-2); margin: 0 0 20px; max-width: 36em; }
+  .actions { display: flex; gap: 4px; margin: -4px 0 22px -8px; }
+  .actions button { background: none; border: 0; padding: 4px 8px; font-size: 12.5px; color: var(--muted); border-radius: var(--radius); display: inline-flex; gap: 5px; align-items: center; }
+  .actions button:hover { color: var(--ink); background: var(--paper-2); }
+  .actions button.del:hover { color: #9c2f22; }
+
+  /* collage */
+  .collage { display: grid; grid-template-columns: repeat(6, 1fr); grid-auto-rows: 64px; gap: 8px; grid-auto-flow: dense; }
+  .tile { position: relative; overflow: hidden; border-radius: 2px; background: var(--paper-2); cursor: zoom-in; border: 0; padding: 0; }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .6s ease, filter .3s; filter: saturate(.92) sepia(.04); }
+  .tile:hover img { transform: scale(1.04); filter: none; }
+  .tile .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 10px 8px; color: #fff; font: italic 400 13px/1.3 var(--serif); text-align: left;
+    background: linear-gradient(transparent, rgba(0,0,0,.55)); opacity: 0; transition: opacity .25s; }
+  .tile:hover .cap { opacity: 1; }
+  .tile.hero { grid-column: span 6; grid-row: span 5; }
+  .s-4x3 { grid-column: span 4; grid-row: span 3; }
+  .s-2x3 { grid-column: span 2; grid-row: span 3; }
+  .s-2x2 { grid-column: span 2; grid-row: span 2; }
+  .s-3x3 { grid-column: span 3; grid-row: span 3; }
+  .s-3x2 { grid-column: span 3; grid-row: span 2; }
+  .figcap { font: italic 400 13px/1.4 var(--serif); color: var(--muted); margin: 8px 0 14px; display: flex; gap: 8px; }
+  .figcap b { font: 600 10px/1.9 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); font-style: normal; }
+  .badge {
+    position: absolute; top: 8px; left: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 5px;
+    font: 600 10px/1 var(--sans); letter-spacing: .04em; padding: 4px 7px 4px 6px; border-radius: 99px;
+    background: rgba(255,255,255,.92); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  }
+  .badge i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .src-immich i { background: #4250af; }
+  .src-local i { background: #8a7a62; }
+  .src-instagram i { background: linear-gradient(45deg,#f9a33b,#e1306c,#833ab4); }
+  .src-youtube i { background: #e62117; }
+  .src-tiktok i { background: #111; box-shadow: 1.5px 0 #25f4ee, -1.5px 0 #fe2c55; }
+  .src-web i { background: #64748b; }
+  .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 46px; height: 46px; border-radius: 50%;
+    background: rgba(255,255,255,.9); display: grid; place-items: center; box-shadow: 0 2px 10px rgba(0,0,0,.25); z-index: 2; pointer-events: none; }
+  .play::after { content: ""; border-style: solid; border-width: 8px 0 8px 13px; border-color: transparent transparent transparent var(--ink); margin-left: 4px; }
+  .tile.small-play .play { width: 34px; height: 34px; }
+  .tile.small-play .play::after { border-width: 6px 0 6px 10px; }
+  .dur { position: absolute; right: 8px; bottom: 8px; z-index: 2; font: 600 11px/1 var(--sans); color: #fff; background: rgba(0,0,0,.6); padding: 4px 6px; border-radius: 3px; }
+  .ext { position: absolute; right: 8px; top: 8px; z-index: 2; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,.9); display: grid; place-items: center; font-size: 12px; }
+  .empty { border: 1.5px dashed var(--rule); border-radius: 4px; padding: 28px; text-align: center; color: var(--muted); font: italic 15px var(--serif); }
+  .empty button { margin-top: 10px; }
+  .cover-banner { width: 100%; aspect-ratio: 3 / 1; object-fit: cover; border-radius: 2px; display: block; margin-bottom: 18px; }
+
+  /* planned */
+  .subhead { font: 600 11px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); margin: 26px 0 12px; display: flex; justify-content: space-between; align-items: center; }
+  .subhead button { background: none; border: 0; font: 500 12px var(--sans); letter-spacing: 0; text-transform: none; color: var(--accent); }
+  .reels { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 10px; scroll-snap-type: x mandatory; scrollbar-width: thin; }
+  .reel { flex: none; width: 142px; aspect-ratio: 9 / 16; scroll-snap-align: start; border-radius: 10px; overflow: hidden; position: relative; cursor: zoom-in; border: 0; padding: 0; background: #222; box-shadow: var(--shadow); }
+  .reel img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .5s; }
+  .reel:hover img { transform: scale(1.05); }
+  .reel .rcap { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 10px 10px; text-align: left; color: #fff; font: 500 12px/1.3 var(--sans);
+    background: linear-gradient(transparent, rgba(0,0,0,.75)); }
+  .reel .rcap small { display: block; opacity: .7; font-size: 10.5px; margin-top: 4px; }
+  .reel .play { width: 34px; height: 34px; background: rgba(255,255,255,.75); }
+  .reel .play::after { border-width: 6px 0 6px 10px; }
+  .reel.add { background: transparent; border: 1.5px dashed var(--rule); box-shadow: none; display: grid; place-items: center; color: var(--muted); font: italic 15px var(--serif); cursor: pointer; }
+  .reel.add:hover { border-color: var(--accent); color: var(--accent); }
+  .reel.add span { display: block; font: 300 34px/1 var(--serif); font-style: normal; }
+  .notes { list-style: none; padding: 0; margin: 0; border-top: 1px solid var(--rule); }
+  .notes li { display: flex; align-items: center; gap: 12px; padding: 9px 2px; border-bottom: 1px solid var(--rule); font: 400 16px/1.4 var(--serif); }
+  .notes li.done span { text-decoration: line-through; color: var(--muted); }
+  .notes input[type=checkbox] { appearance: none; width: 17px; height: 17px; border: 1.5px solid var(--ink-2); border-radius: 3px; margin: 0; flex: none; cursor: pointer; display: grid; place-items: center; }
+  .notes input[type=checkbox]:checked { background: var(--ink); border-color: var(--ink); }
+  .notes input[type=checkbox]:checked::after { content: "✓"; color: var(--paper); font-size: 12px; line-height: 1; }
+  .notes li .x { margin-left: auto; background: none; border: 0; color: var(--muted); opacity: 0; }
+  .notes li:hover .x { opacity: 1; }
+  .notes li.addrow input { flex: 1; border: 0; background: none; outline: none; font: italic 16px var(--serif); }
+  .notes li.addrow b { width: 17px; text-align: center; color: var(--muted); font-weight: 400; }
+
+  /* ---------- Map overlays ---------- */
+  .mapcard {
+    position: absolute; left: 16px; bottom: 16px; z-index: 5; max-width: 320px;
+    background: rgba(251,248,242,.95); border: 1px solid var(--rule); border-radius: 4px; padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .mapcard .lbl { font: 600 10px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .mapcard h4 { font: 400 22px/1.15 var(--serif); margin: 6px 0 2px; }
+  .mapcard p { margin: 0; font: italic 13.5px var(--serif); color: var(--ink-2); }
+  .legend { display: flex; gap: 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule); font-size: 11.5px; color: var(--muted); }
+  .legend span { display: inline-flex; gap: 6px; align-items: center; }
+  .legend i { width: 22px; height: 0; border-top: 2.5px solid var(--ink-2); }
+  .legend i.dash { border-top-style: dashed; }
+  .mapnote { position: absolute; top: 14px; left: 16px; z-index: 5; font: italic 13px var(--serif); color: var(--ink-2); background: rgba(251,248,242,.9); padding: 5px 10px; border-radius: 99px; border: 1px solid var(--rule); }
+  .maplibregl-popup-content { font: 13px var(--sans); padding: 8px 12px; border-radius: 4px; background: var(--card); box-shadow: var(--shadow); }
+  .maplibregl-popup-content b { font: 500 15px var(--serif); display: block; }
+  .maplibregl-popup-tip { border-top-color: var(--card) !important; border-bottom-color: var(--card) !important; }
+  .maplibregl-ctrl-group { background: var(--card); border-radius: 4px; }
+
+  /* ---------- Dialogs ---------- */
+  dialog { border: 0; padding: 0; background: var(--card); color: var(--ink); border-radius: 6px; box-shadow: 0 30px 80px rgba(42,38,32,.35); max-width: calc(100vw - 32px); }
+  dialog::backdrop { background: rgba(42,38,32,.45); backdrop-filter: blur(2px); }
+  .dlg-head { display: flex; align-items: baseline; justify-content: space-between; padding: 22px 26px 10px; }
+  .dlg-head h3 { font: 400 28px/1.1 var(--serif); margin: 0; }
+  .dlg-head .close { background: none; border: 0; font-size: 22px; color: var(--muted); line-height: 1; }
+  .dlg-body { padding: 8px 26px 6px; max-height: calc(100vh - 220px); overflow: auto; }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: 10px; align-items: center; padding: 16px 26px 22px; border-top: 1px solid var(--rule); margin-top: 12px; }
+  .dlg-foot .hint { margin-right: auto; font: italic 13px var(--serif); color: var(--muted); }
+  .field { margin-bottom: 16px; }
+  .field > label, .flabel { display: block; font: 600 10.5px/1 var(--sans); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  .field input[type=text], .field input[type=date], .field input[type=url], .field select, .field textarea, .input {
+    width: 100%; border: 1px solid var(--rule); background: #fff; border-radius: var(--radius); padding: 9px 11px; outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus, .input:focus { border-color: var(--ink-2); }
+  .field input.title-in { font: 400 24px var(--serif); padding: 8px 11px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .statusopts { display: flex; gap: 8px; }
+  .statusopts label { flex: 1; border: 1px solid var(--rule); border-radius: var(--radius); padding: 9px 12px; cursor: pointer; display: flex; gap: 8px; align-items: center; background: #fff; font-size: 14px; }
+  .statusopts input { accent-color: var(--ink); }
+  .statusopts label:has(input:checked) { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+  .stoplist { list-style: none; margin: 0 0 8px; padding: 0; }
+  .stoplist li { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 1px solid var(--rule); border-radius: var(--radius); margin-bottom: 6px; background: #fff; font-size: 14px; }
+  .stoplist li .n { width: 20px; height: 20px; border-radius: 50%; background: var(--ink); color: #fff; font: 600 10px/20px var(--sans); text-align: center; flex: none; }
+  .stoplist li small { color: var(--muted); font-size: 11.5px; }
+  .stoplist li .ctl { margin-left: auto; display: flex; gap: 2px; }
+  .stoplist li .ctl button { background: none; border: 0; color: var(--muted); padding: 2px 6px; border-radius: 3px; }
+  .stoplist li .ctl button:hover { background: var(--paper-2); color: var(--ink); }
+  .search { position: relative; }
+  .search .results { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 10; background: #fff; border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: var(--shadow); max-height: 220px; overflow: auto; }
+  .search .results button { display: flex; width: 100%; text-align: left; border: 0; background: none; padding: 8px 12px; gap: 10px; align-items: baseline; font-size: 14px; }
+  .search .results button:hover, .search .results button.hl { background: var(--paper-2); }
+  .search .results small { color: var(--muted); font-size: 12px; }
+  .search .results .status { padding: 9px 12px; font: italic 13px var(--serif); color: var(--muted); }
+  .swatches { display: flex; gap: 8px; }
+  .swatches label { width: 26px; height: 26px; border-radius: 50%; cursor: pointer; position: relative; }
+  .swatches input { position: absolute; opacity: 0; }
+  .swatches label:has(input:checked) { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink); }
+  .covers { display: flex; gap: 8px; flex-wrap: wrap; }
+  .covers label { width: 84px; height: 56px; border-radius: 3px; overflow: hidden; cursor: pointer; position: relative; border: 1px solid var(--rule); display: grid; place-items: center; font: italic 12px var(--serif); color: var(--muted); background: #fff; }
+  .covers img { width: 100%; height: 100%; object-fit: cover; }
+  .covers input { position: absolute; opacity: 0; }
+  .covers label:has(input:checked) { outline: 2.5px solid var(--ink); outline-offset: 2px; }
+
+  #tripDlg { width: 600px; }
+  #mediaDlg { width: 760px; }
+  #confirmDlg { width: 420px; }
+  #confirmDlg p { font: 400 16px/1.5 var(--serif); color: var(--ink-2); margin: 0; }
+
+  .mtabs { display: flex; gap: 22px; padding: 0 26px; border-bottom: 1px solid var(--rule); }
+  .mtabs button { background: none; border: 0; padding: 10px 0; font-weight: 500; font-size: 14px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; display: flex; align-items: center; gap: 7px; }
+  .mtabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+  .mtabs button i { width: 8px; height: 8px; border-radius: 50%; }
+  .mtabs .sel { font-size: 11px; background: var(--accent); color: #fff; border-radius: 99px; padding: 1px 6px; }
+  .mpanel { padding-top: 16px; min-height: 360px; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .bar .meta { font: italic 14px var(--serif); color: var(--ink-2); }
+  .bar .meta b { font-style: normal; font-weight: 500; }
+  .bar select { width: auto; }
+  .bar .linkbtn { background: none; border: 0; color: var(--accent); font-size: 13px; margin-left: auto; }
+  .pickgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+  .pick { position: relative; aspect-ratio: 1; border: 0; padding: 0; border-radius: 3px; overflow: hidden; background: var(--paper-2); }
+  .pick img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+  .pick .chk { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.2); display: grid; place-items: center; color: #fff; font-size: 11px; }
+  .pick.on img { transform: scale(.88); border-radius: 2px; }
+  .pick.on { background: var(--accent-soft); }
+  .pick.on .chk { background: var(--accent); border-color: var(--accent); }
+  .pick.on .chk::after { content: "✓"; }
+  .pick .when { position: absolute; left: 6px; bottom: 6px; font: 600 10px/1 var(--sans); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .pick .vd { position: absolute; right: 6px; bottom: 6px; font: 600 10px/1 var(--sans); background: rgba(0,0,0,.6); color: #fff; padding: 3px 5px; border-radius: 3px; }
+  .crumbs { display: flex; gap: 6px; align-items: center; font: 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-2); background: #fff; border: 1px solid var(--rule); border-radius: var(--radius); padding: 7px 10px; flex: 1; }
+  .crumbs button { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); }
+  .crumbs .s { color: var(--muted); }
+  .folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 8px; margin-bottom: 14px; }
+  .folder { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--radius); background: #fff; text-align: left; font-size: 13.5px; }
+  .folder:hover { border-color: var(--ink-2); }
+  .folder .ic { width: 22px; height: 16px; background: #d9c7a3; border-radius: 2px 2px 3px 3px; position: relative; flex: none; }
+  .folder .ic::before { content: ""; position: absolute; top: -3px; left: 0; width: 9px; height: 4px; background: #d9c7a3; border-radius: 2px 2px 0 0; }
+  .folder small { display: block; color: var(--muted); font-size: 11.5px; }
+  .fname { font: 10.5px/1.2 ui-monospace, Menlo, monospace; color: var(--muted); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .linkin { display: flex; gap: 8px; }
+  .linkin input { flex: 1; font-size: 15px; padding: 11px 13px; }
+  .tries { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0 20px; font-size: 12px; color: var(--muted); align-items: center; }
+  .tries button { border: 1px solid var(--rule); background: #fff; border-radius: 99px; padding: 3px 10px; font-size: 12px; }
+  .preview { display: flex; gap: 18px; border: 1px solid var(--rule); background: #fff; border-radius: 6px; padding: 14px; align-items: flex-start; }
+  .preview .thumb { width: 120px; aspect-ratio: 9/16; border-radius: 8px; overflow: hidden; flex: none; position: relative; background: var(--paper-2); }
+  .preview .thumb.wide { width: 200px; aspect-ratio: 16/9; }
+  .preview .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .preview h5 { font: 400 20px/1.2 var(--serif); margin: 6px 0; }
+  .preview .host { font-size: 12px; color: var(--muted); word-break: break-all; }
+  .preview .opts { margin-top: 14px; display: grid; gap: 8px; font-size: 13.5px; }
+  .preview .opts label { display: flex; gap: 8px; align-items: center; }
+  .preview .opts input { accent-color: var(--ink); }
+  .badge.inline { position: static; box-shadow: none; background: var(--paper-2); }
+  .shimmer { background: linear-gradient(90deg, var(--paper-2) 25%, #f7f2e8 50%, var(--paper-2) 75%); background-size: 200% 100%; animation: sh 1.1s infinite; border-radius: 4px; }
+  @keyframes sh { to { background-position: -200% 0; } }
+  .hintbox { font: italic 14px var(--serif); color: var(--muted); text-align: center; padding: 40px 0; }
+
+  /* ---------- Lightbox ---------- */
+  .lightbox { position: fixed; inset: 0; z-index: 200; background: rgba(28,25,21,.94); display: none; grid-template-columns: 70px 1fr 70px; grid-template-rows: 1fr auto; color: #f3ede2; }
+  .lightbox.open { display: grid; }
+  .lightbox .stage { grid-column: 2; display: grid; place-items: center; min-height: 0; padding: 40px 0 10px; position: relative; }
+  .lightbox .stage .media { position: relative; max-width: 100%; max-height: 100%; }
+  .lightbox img { max-width: min(1100px, 100%); max-height: calc(100vh - 170px); object-fit: contain; display: block; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .lightbox .play { width: 72px; height: 72px; }
+  .lightbox .play::after { border-width: 12px 0 12px 20px; }
+  .lightbox .nav { background: none; border: 0; color: #f3ede2; font: 300 44px/1 var(--serif); opacity: .6; align-self: center; justify-self: center; }
+  .lightbox .nav:hover { opacity: 1; }
+  .lightbox .info { grid-column: 1 / -1; display: flex; justify-content: center; align-items: center; gap: 18px; padding: 16px 24px 26px; flex-wrap: wrap; }
+  .lightbox .info .cap { font: italic 400 20px var(--serif); }
+  .lightbox .info .idx { font-size: 12px; opacity: .55; letter-spacing: .1em; }
+  .lightbox .info a { color: #f3ede2; font-size: 13px; border: 1px solid rgba(243,237,226,.35); border-radius: 99px; padding: 5px 12px; text-decoration: none; }
+  .lightbox .info a:hover { background: rgba(243,237,226,.1); }
+  .lightbox .x { position: absolute; top: 16px; right: 22px; background: none; border: 0; color: #f3ede2; font-size: 30px; opacity: .7; z-index: 2; }
+  .lightbox .note { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); font: 12px var(--sans); background: rgba(0,0,0,.55); padding: 5px 10px; border-radius: 99px; white-space: nowrap; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 20px); opacity: 0; z-index: 300; background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 99px; font-size: 13.5px; transition: all .3s; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .mockup-label { position: fixed; left: 14px; bottom: 14px; z-index: 100; font: 600 10.5px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase;
+    background: var(--ink); color: var(--paper); padding: 7px 11px; border-radius: 3px; opacity: .85; pointer-events: none; }
+
+  /* ---------- Narrow ---------- */
+  @media (max-width: 960px) {
+    :root { --header-h: 104px; }
+    header.top { flex-wrap: wrap; height: auto; min-height: var(--header-h); padding: 10px 18px 0; gap: 10px 16px; }
+    nav.tabs { order: 5; width: 100%; height: 40px; }
+    .brand small { display: none; }
+    .layout { display: flex; flex-direction: column; }
+    .mapcol { order: -1; z-index: 20; height: 42vh; padding: 10px; background: var(--paper); border-bottom: 1px solid var(--rule); }
+    .journal { padding: 28px 20px 40vh; }
+    .intro h2 { font-size: 36px; }
+    .trip h3 { font-size: 34px; }
+    .mapcard { left: 10px; bottom: 10px; padding: 8px 12px; max-width: 220px; }
+    .maplibregl-ctrl-attrib { font-size: 10px; }
+    .mapcard h4 { font-size: 17px; }
+    .mapcard .legend, .mapnote { display: none; }
+    article.trip { scroll-margin-top: calc(var(--header-h) + 42vh + 10px); }
+    .collage { grid-auto-rows: 48px; }
+    .lightbox { grid-template-columns: 40px 1fr 40px; }
+  }
+  @media (max-width: 560px) {
+    .hide-sm { display: none; }
+    .brand .mark { display: none; }
+    .mapcard p { display: none; }
+    .seg button { padding: 5px 10px; }
+    .btn { padding: 7px 12px; }
+    .brand h1 { font-size: 20px; }
+    .row2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="mark"></span><h1>Trip Atlas</h1><small>Field journal</small></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="all" class="on">Everything</button>
+    <button data-tab="past">Past trips<span class="count" id="cPast"></span></button>
+    <button data-tab="planned">Planning<span class="count" id="cPlanned"></span></button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="seg" id="projSeg" role="group" aria-label="Projection">
+    <button data-proj="mercator" class="on">▭ Map</button>
+    <button data-proj="globe">◯ Globe</button>
+  </div>
+  <button class="btn" id="newTripBtn">+ New<span class="hide-sm"> trip</span></button>
+</header>
+
+<div class="layout">
+  <main class="journal" id="journal"></main>
+  <aside class="mapcol">
+    <div class="mapframe">
+      <div id="map"></div>
+      <div class="mapnote" id="mapnote">Scroll the journal — the map follows.</div>
+      <div class="mapcard" id="mapcard">
+        <div class="lbl" id="mcLbl">Now reading</div>
+        <h4 id="mcTitle">—</h4>
+        <p id="mcSub"></p>
+        <div class="legend"><span><i></i>Travelled</span><span><i class="dash"></i>Planned</span></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- Trip form -->
+<dialog id="tripDlg">
+  <form method="dialog" id="tripForm" autocomplete="off">
+    <div class="dlg-head"><h3 id="tripDlgTitle">A new trip</h3><button type="button" class="close" data-close>×</button></div>
+    <div class="dlg-body">
+      <div class="field"><label for="fTitle">Title</label><input type="text" id="fTitle" class="title-in" placeholder="e.g. Slow summer in the Dolomites" required></div>
+      <div class="field">
+        <span class="flabel">Status</span>
+        <div class="statusopts">
+          <label><input type="radio" name="status" value="planned" checked> Planning</label>
+          <label><input type="radio" name="status" value="past"> Already travelled</label>
+        </div>
+      </div>
+      <div class="row2">
+        <div class="field"><label for="fStart">Start</label><input type="date" id="fStart" required></div>
+        <div class="field"><label for="fEnd">End</label><input type="date" id="fEnd" required></div>
+      </div>
+      <div class="field">
+        <span class="flabel">Stops</span>
+        <ul class="stoplist" id="fStops"></ul>
+        <div class="search">
+          <input type="text" class="input" id="fPlace" placeholder="Search a place to add a stop…">
+          <div class="results" id="fResults" hidden></div>
+        </div>
+      </div>
+      <div class="field"><label for="fSummary">Summary</label><textarea id="fSummary" rows="2" placeholder="One or two lines, like the back of a postcard."></textarea></div>
+      <div class="row2">
+        <div class="field"><label for="fTags">Tags</label><input type="text" id="fTags" placeholder="food, hike, beach"></div>
+        <div class="field"><span class="flabel">Colour</span><div class="swatches" id="fColors"></div></div>
+      </div>
+      <div class="field"><span class="flabel">Cover</span><div class="covers" id="fCovers"></div></div>
+    </div>
+    <div class="dlg-foot">
+      <span class="hint" id="tripHint"></span>
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn" id="tripSave">Create trip</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Add media -->
+<dialog id="mediaDlg">
+  <div class="dlg-head"><h3>Add to <em id="mdTrip"></em></h3><button type="button" class="close" data-close>×</button></div>
+  <div class="mtabs" id="mTabs">
+    <button data-mt="immich" class="on"><i style="background:#4250af"></i>Immich <span class="sel" hidden></span></button>
+    <button data-mt="local"><i style="background:#8a7a62"></i>Local folder <span class="sel" hidden></span></button>
+    <button data-mt="link"><i style="background:linear-gradient(45deg,#f9a33b,#e1306c,#833ab4)"></i>Link <span class="sel" hidden></span></button>
+  </div>
+  <div class="dlg-body"><div class="mpanel" id="mPanel"></div></div>
+  <div class="dlg-foot">
+    <span class="hint" id="mHint">Media stays where it lives — Trip Atlas only keeps a reference.</span>
+    <button type="button" class="btn ghost" data-close>Cancel</button>
+    <button type="button" class="btn" id="mAdd" disabled>Add</button>
+  </div>
+</dialog>
+
+<!-- Confirm -->
+<dialog id="confirmDlg">
+  <div class="dlg-head"><h3 id="cfTitle">Delete trip?</h3></div>
+  <div class="dlg-body"><p id="cfText"></p></div>
+  <div class="dlg-foot">
+    <button type="button" class="btn ghost" data-close>Keep it</button>
+    <button type="button" class="btn danger" id="cfOk">Delete</button>
+  </div>
+</dialog>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" aria-hidden="true">
+  <button class="x" id="lbClose" aria-label="Close">×</button>
+  <button class="nav" id="lbPrev" aria-label="Previous">‹</button>
+  <div class="stage" id="lbStage"></div>
+  <button class="nav" id="lbNext" aria-label="Next">›</button>
+  <div class="info" id="lbInfo"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="mockup-label">Mockup B — Field Journal</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- constants & helpers ----------
+  const TODAY = new Date("2026-10-13T00:00:00");
+  const DAY = 864e5;
+  const STYLE_PRIMARY = "https://tiles.openfreemap.org/styles/positron";
+  const STYLE_FALLBACK = "https://tiles.openfreemap.org/styles/liberty";
+  const COLORS = ["#c2410c", "#0e7490", "#15803d", "#7e22ce", "#ca8a04", "#be185d", "#334155"];
+  const SRC_LABEL = { immich: "Immich", local: "Local", instagram: "Instagram", youtube: "YouTube", tiktok: "TikTok", web: "Web" };
+  const pic = (seed, w = 600, h = 400) => `https://picsum.photos/seed/${String(seed).replace(/[^a-z0-9]+/gi, "-")}/${w}/${h}`;
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const parseD = (s) => new Date(s + "T00:00:00");
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const MON = MONTHS.map((m) => m.slice(0, 3));
+
+  function fmtRange(a, b) {
+    const s = parseD(a), e = parseD(b);
+    if (s.getFullYear() === e.getFullYear()) {
+      if (s.getMonth() === e.getMonth()) return `${s.getDate()}–${e.getDate()} ${MONTHS[s.getMonth()]} ${s.getFullYear()}`;
+      return `${s.getDate()} ${MONTHS[s.getMonth()]} – ${e.getDate()} ${MONTHS[e.getMonth()]} ${e.getFullYear()}`;
+    }
+    return `${s.getDate()} ${MON[s.getMonth()]} ${s.getFullYear()} – ${e.getDate()} ${MON[e.getMonth()]} ${e.getFullYear()}`;
+  }
+  const nights = (t) => Math.round((parseD(t.end) - parseD(t.start)) / DAY);
+  const daysUntil = (t) => Math.round((parseD(t.start) - TODAY) / DAY);
+
+  const toastEl = $("#toast");
+  let toastTimer;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
+  // ---------- state ----------
+  const state = {
+    trips: (window.TRIPS || []).map((t) => ({ ...t, notes: (t.notes || []).map((n) => ({ text: n, done: false })) })),
+    tab: "all",
+    activeId: null,
+    projection: "mercator",
+  };
+  const tripById = (id) => state.trips.find((t) => t.id === id);
+  const visibleTrips = () => state.trips.filter((t) => state.tab === "all" || t.status === state.tab);
+
+  // ---------- journal rendering ----------
+  const journal = $("#journal");
+
+  function badge(src) {
+    return `<span class="badge src-${esc(src)}"><i></i>${esc(SRC_LABEL[src] || src)}</span>`;
+  }
+
+  const PATTERN = ["s-4x3", "s-2x3", "s-2x2", "s-2x2", "s-2x2", "s-3x3", "s-3x3", "s-3x2", "s-3x2"];
+
+  function tileHTML(t, m, i, cls) {
+    const isVideo = m.type === "video";
+    const isPost = m.type === "post";
+    return `<button class="tile ${cls} ${cls === "hero" ? "" : "small-play"}" data-action="lightbox" data-trip="${t.id}" data-idx="${i}" aria-label="${esc(m.caption)}">
+      <img src="${esc(m.url)}" alt="${esc(m.caption)}" loading="lazy">
+      ${badge(m.src)}
+      ${isVideo ? `<span class="play"></span><span class="dur">${esc(m.duration || "")}</span>` : ""}
+      ${isPost ? `<span class="ext">↗</span>${m.src !== "web" ? '<span class="play"></span>' : ""}` : ""}
+      <span class="cap">${esc(m.caption)}</span>
+    </button>`;
+  }
+
+  function collageHTML(t, items) {
+    if (!items.length) {
+      if (t.cover) return `<img class="cover-banner" src="${esc(t.cover)}" alt=""><div class="empty">No photos attached yet.<br><button class="btn ghost" data-action="media" data-trip="${t.id}">Add from Immich or a folder</button></div>`;
+      return `<div class="empty">No photos attached yet.<br><button class="btn ghost" data-action="media" data-trip="${t.id}">Add from Immich or a folder</button></div>`;
+    }
+    const [hero, ...rest] = items;
+    let html = `<div class="collage">${tileHTML(t, hero.m, hero.i, "hero")}</div>`;
+    html += `<div class="figcap"><b>Fig. 1</b> ${esc(hero.m.caption)}</div>`;
+    if (rest.length) {
+      html += `<div class="collage">` + rest.map((x, k) => {
+        return tileHTML(t, x.m, x.i, PATTERN[k % PATTERN.length]);
+      }).join("") + `</div>`;
+    }
+    return html;
+  }
+
+  function reelsHTML(t, items) {
+    const cards = items.map(({ m, i }) => `
+      <button class="reel" data-action="lightbox" data-trip="${t.id}" data-idx="${i}">
+        <img src="${esc(m.url)}" alt="" loading="lazy">
+        ${badge(m.src)}
+        ${m.src !== "web" ? '<span class="play"></span>' : ""}
+        <span class="rcap">${esc(m.caption)}<small>${esc(hostOf(m.link))}</small></span>
+      </button>`).join("");
+    return `<div class="reels">${cards}<button class="reel add" data-action="media" data-trip="${t.id}" data-mt="link"><div><span>+</span>Save a link</div></button></div>`;
+  }
+
+  function hostOf(url) {
+    try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url ? "saved file" : ""; }
+  }
+
+  function notesHTML(t) {
+    return `<ul class="notes" data-trip="${t.id}">
+      ${t.notes.map((n, k) => `<li class="${n.done ? "done" : ""}"><input type="checkbox" data-action="note-toggle" data-trip="${t.id}" data-k="${k}" ${n.done ? "checked" : ""}><span>${esc(n.text)}</span><button class="x" data-action="note-del" data-trip="${t.id}" data-k="${k}" title="Remove">×</button></li>`).join("")}
+      <li class="addrow"><b>+</b><input type="text" placeholder="Add a note and press Enter" data-note-add="${t.id}"></li>
+    </ul>`;
+  }
+
+  function tripHTML(t) {
+    const planned = t.status === "planned";
+    const media = t.media.map((m, i) => ({ m, i }));
+    let eyebrow;
+    if (planned) {
+      const d = daysUntil(t);
+      eyebrow = `<span class="dot planned" style="border-color:${t.color}"></span><span class="pill count">${d > 0 ? `In ${d} days` : d === 0 ? "Today" : "Underway"}</span><span>${nights(t)} nights · ${t.stops.length} stops</span>`;
+    } else {
+      eyebrow = `<span class="dot" style="background:${t.color}"></span><span class="pill">${parseD(t.start).getFullYear()}</span><span>${nights(t)} nights · ${t.stops.length} stops · ${t.media.length} keepsakes</span>`;
+    }
+    const itin = t.stops.map((s, k) => `${k ? '<span class="arrow">→</span>' : ""}<button class="stop ${planned ? "planned" : ""}" data-action="stop" data-trip="${t.id}" data-k="${k}"><span class="n" style="background:${t.color};border-color:${t.color};color:${planned ? t.color : "#fff"}">${k + 1}</span><span class="nm">${esc(s.name)}</span></button>`).join("");
+    let body;
+    if (planned) {
+      const posts = media.filter((x) => x.m.type === "post");
+      const others = media.filter((x) => x.m.type !== "post");
+      body = (t.cover ? `<img class="cover-banner" src="${esc(t.cover)}" alt="">` : "") +
+        `<div class="subhead"><span>Inspiration · ${posts.length} saved</span><button data-action="media" data-trip="${t.id}" data-mt="link">+ Save link</button></div>` +
+        reelsHTML(t, posts) +
+        (others.length ? `<div class="subhead"><span>Gathered photos</span></div><div class="collage">${others.map((x, k) => tileHTML(t, x.m, x.i, PATTERN[(k + 2) % PATTERN.length])).join("")}</div>` : "") +
+        `<div class="subhead"><span>Notes &amp; to-dos · ${t.notes.filter((n) => n.done).length}/${t.notes.length}</span></div>` +
+        notesHTML(t);
+    } else {
+      body = collageHTML(t, media);
+    }
+    return `<article class="trip" id="trip-${t.id}" data-id="${t.id}">
+      <div class="eyebrow">${eyebrow}</div>
+      <h3 data-action="fly" data-trip="${t.id}">${esc(t.title)}</h3>
+      <div class="dates">${fmtRange(t.start, t.end)}</div>
+      <div class="itinerary">${itin || '<em style="color:var(--muted)">No stops yet</em>'}</div>
+      <div class="tags">${(t.tags || []).map((g) => `<span class="tag">${esc(g)}</span>`).join("")}</div>
+      ${t.summary ? `<p class="summary">${esc(t.summary)}</p>` : ""}
+      <div class="actions">
+        <button data-action="media" data-trip="${t.id}">＋ Add media</button>
+        <button data-action="edit" data-trip="${t.id}">✎ Edit</button>
+        <button data-action="delete" data-trip="${t.id}" class="del">⌫ Delete</button>
+      </div>
+      ${body}
+    </article>`;
+  }
+
+  function renderJournal() {
+    const vis = visibleTrips();
+    const planned = vis.filter((t) => t.status === "planned").sort((a, b) => a.start.localeCompare(b.start));
+    const past = vis.filter((t) => t.status === "past").sort((a, b) => b.start.localeCompare(a.start));
+    const allPast = state.trips.filter((t) => t.status === "past");
+    const stopCount = allPast.reduce((n, t) => n + t.stops.length, 0);
+    const mediaCount = allPast.reduce((n, t) => n + t.media.length, 0);
+    const dayCount = allPast.reduce((n, t) => n + nights(t) + 1, 0);
+    const heads = {
+      all: ["The journal", "Places I've been, <em>and places I'm going.</em>"],
+      past: ["Past trips", "Everything already <em>walked, eaten and photographed.</em>"],
+      planned: ["Planning", "Saved reels, loose notes, <em>and a countdown.</em>"],
+    }[state.tab];
+    let html = `<section class="intro">
+      <div class="kicker">${heads[0]}</div>
+      <h2>${heads[1]}</h2>
+      <div class="stats">
+        <div><b>${allPast.length}</b>trips travelled</div>
+        <div><b>${stopCount}</b>stops pinned</div>
+        <div><b>${dayCount}</b>days on the road</div>
+        <div><b>${state.trips.length - allPast.length}</b>coming up</div>
+      </div>
+    </section>`;
+    if (planned.length) html += `<div class="chapter"><span>Coming up</span></div>` + planned.map(tripHTML).join("");
+    if (past.length) html += `<div class="chapter"><span>The archive · ${mediaCount} keepsakes</span></div>` + past.map(tripHTML).join("");
+    if (!vis.length) html += `<div class="empty" style="margin-top:40px">Nothing here yet.<br><button class="btn" data-action="new">+ New trip</button></div>`;
+    journal.innerHTML = html;
+    $("#cPast").textContent = state.trips.filter((t) => t.status === "past").length;
+    $("#cPlanned").textContent = state.trips.filter((t) => t.status === "planned").length;
+    observeSections();
+  }
+
+  // ---------- scrollytelling ----------
+  let io;
+  const narrowMQ = window.matchMedia("(max-width: 960px)");
+  function observeSections() {
+    if (io) io.disconnect();
+    const margin = narrowMQ.matches ? "-62% 0px -33% 0px" : "-38% 0px -57% 0px";
+    io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) setActive(Number(e.target.dataset.id)); });
+    }, { rootMargin: margin, threshold: 0 });
+    $$("article.trip", journal).forEach((a) => io.observe(a));
+    const vis = visibleTrips();
+    if (!vis.some((t) => t.id === state.activeId)) {
+      const first = $("article.trip", journal);
+      setActive(first ? Number(first.dataset.id) : null, true);
+    } else {
+      setActive(state.activeId, true);
+    }
+  }
+  narrowMQ.addEventListener("change", observeSections);
+
+  function setActive(id, force = false) {
+    if (id === state.activeId && !force) return;
+    state.activeId = id;
+    $$("article.trip", journal).forEach((a) => a.style.opacity = Number(a.dataset.id) === id ? "1" : ".55");
+    const t = tripById(id);
+    $("#mcLbl").textContent = t ? (t.status === "planned" ? `Coming up · in ${daysUntil(t)} days` : `Now reading · ${parseD(t.start).getFullYear()}`) : "Trip Atlas";
+    $("#mcTitle").textContent = t ? t.title : "No trips in view";
+    $("#mcSub").textContent = t ? t.stops.map((s) => s.name).join(" → ") : "";
+    applyMapActive();
+    if (t) flyToTrip(t);
+  }
+
+  // ---------- map ----------
+  const map = new maplibregl.Map({
+    container: "map",
+    style: STYLE_PRIMARY,
+    center: [10, 30],
+    zoom: 1.4,
+    attributionControl: { compact: true },
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  let mapReady = false;
+  let usedFallback = false;
+
+  map.on("error", (e) => {
+    if (!mapReady && !usedFallback && /style|Failed to fetch/i.test(String(e && e.error && e.error.message))) {
+      usedFallback = true;
+      map.setStyle(STYLE_FALLBACK);
+    }
+  });
+
+  map.on("style.load", () => {
+    map.setProjection({ type: state.projection });
+    addLayers();
+    mapReady = true;
+    updateMapData();
+    applyMapActive();
+    const t = tripById(state.activeId);
+    if (t) flyToTrip(t, true);
+  });
+
+  function toRad(d) { return d * Math.PI / 180; }
+  function toDeg(r) { return r * 180 / Math.PI; }
+  // great-circle interpolation so arcs look right on the globe
+  function arc(a, b, n = 48) {
+    const [l1, p1, l2, p2] = [toRad(a.lng), toRad(a.lat), toRad(b.lng), toRad(b.lat)];
+    const d = 2 * Math.asin(Math.sqrt(Math.sin((p2 - p1) / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin((l2 - l1) / 2) ** 2));
+    if (d < 1e-6) return [[a.lng, a.lat], [b.lng, b.lat]];
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const f = i / n;
+      const A = Math.sin((1 - f) * d) / Math.sin(d), B = Math.sin(f * d) / Math.sin(d);
+      const x = A * Math.cos(p1) * Math.cos(l1) + B * Math.cos(p2) * Math.cos(l2);
+      const y = A * Math.cos(p1) * Math.sin(l1) + B * Math.cos(p2) * Math.sin(l2);
+      const z = A * Math.sin(p1) + B * Math.sin(p2);
+      pts.push([toDeg(Math.atan2(y, x)), toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)))]);
+    }
+    return pts;
+  }
+
+  function buildGeo() {
+    const routes = [], stops = [];
+    visibleTrips().forEach((t) => {
+      if (t.stops.length > 1) {
+        let coords = [];
+        for (let k = 0; k < t.stops.length - 1; k++) {
+          const seg = arc(t.stops[k], t.stops[k + 1], 24);
+          coords = coords.concat(k ? seg.slice(1) : seg);
+        }
+        routes.push({ type: "Feature", properties: { id: t.id, color: t.color, status: t.status }, geometry: { type: "LineString", coordinates: coords } });
+      }
+      t.stops.forEach((s, k) => stops.push({
+        type: "Feature",
+        properties: { id: t.id, n: k + 1, name: s.name, color: t.color, status: t.status, title: t.title },
+        geometry: { type: "Point", coordinates: [s.lng, s.lat] },
+      }));
+    });
+    return {
+      routes: { type: "FeatureCollection", features: routes },
+      stops: { type: "FeatureCollection", features: stops },
+    };
+  }
+
+  function addLayers() {
+    if (map.getSource("routes")) return;
+    const g = buildGeo();
+    map.addSource("routes", { type: "geojson", data: g.routes });
+    map.addSource("stops", { type: "geojson", data: g.stops });
+    map.addLayer({ id: "route-casing", type: "line", source: "routes", layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": "#fbf8f2", "line-width": 6, "line-opacity": 0 } });
+    map.addLayer({ id: "route-past", type: "line", source: "routes", filter: ["==", ["get", "status"], "past"],
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.3 } });
+    map.addLayer({ id: "route-planned", type: "line", source: "routes", filter: ["==", ["get", "status"], "planned"],
+      layout: { "line-join": "round" },
+      paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.3, "line-dasharray": [2, 1.6] } });
+    map.addLayer({ id: "stop-circle", type: "circle", source: "stops",
+      paint: { "circle-radius": 4, "circle-color": "#fff", "circle-stroke-color": ["get", "color"], "circle-stroke-width": 2, "circle-opacity": 0.4, "circle-stroke-opacity": 0.4 } });
+    map.addLayer({ id: "stop-num", type: "symbol", source: "stops", filter: ["==", ["get", "id"], -1],
+      layout: { "text-field": ["to-string", ["get", "n"]], "text-font": ["Noto Sans Bold"], "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true },
+      paint: { "text-color": ["case", ["==", ["get", "status"], "planned"], ["get", "color"], "#ffffff"] } });
+    map.addLayer({ id: "stop-label", type: "symbol", source: "stops", filter: ["==", ["get", "id"], -1],
+      layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Italic"], "text-size": 13, "text-anchor": "left", "text-offset": [1.3, 0], "text-optional": true },
+      paint: { "text-color": "#2a2620", "text-halo-color": "#fbf8f2", "text-halo-width": 2 } });
+
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12 });
+    map.on("mouseenter", "stop-circle", (e) => {
+      map.getCanvas().style.cursor = "pointer";
+      const p = e.features[0].properties;
+      popup.setLngLat(e.features[0].geometry.coordinates).setHTML(`<b>${esc(p.name)}</b>${esc(p.title)} · stop ${p.n}`).addTo(map);
+    });
+    map.on("mouseleave", "stop-circle", () => { map.getCanvas().style.cursor = ""; popup.remove(); });
+    map.on("click", "stop-circle", (e) => {
+      const id = e.features[0].properties.id;
+      const el = document.getElementById("trip-" + id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    map.on("click", "route-past", (e) => scrollToTrip(e.features[0].properties.id));
+    map.on("click", "route-planned", (e) => scrollToTrip(e.features[0].properties.id));
+  }
+
+  function scrollToTrip(id) {
+    const el = document.getElementById("trip-" + id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function updateMapData() {
+    if (!mapReady || !map.getSource("routes")) return;
+    const g = buildGeo();
+    map.getSource("routes").setData(g.routes);
+    map.getSource("stops").setData(g.stops);
+  }
+
+  function applyMapActive() {
+    if (!mapReady || !map.getLayer("stop-circle")) return;
+    const id = state.activeId ?? -1;
+    const isA = ["==", ["get", "id"], id];
+    map.setPaintProperty("route-casing", "line-opacity", ["case", isA, 0.9, 0]);
+    map.setFilter("route-casing", isA);
+    for (const L of ["route-past", "route-planned"]) {
+      map.setPaintProperty(L, "line-width", ["case", isA, 3.5, 1.6]);
+      map.setPaintProperty(L, "line-opacity", ["case", isA, 1, 0.22]);
+    }
+    map.setPaintProperty("stop-circle", "circle-radius", ["case", isA, 10, 3.5]);
+    map.setPaintProperty("stop-circle", "circle-color", ["case", ["all", isA, ["==", ["get", "status"], "past"]], ["get", "color"], "#ffffff"]);
+    map.setPaintProperty("stop-circle", "circle-stroke-width", ["case", isA, 2.5, 1.5]);
+    map.setPaintProperty("stop-circle", "circle-opacity", ["case", isA, 1, 0.35]);
+    map.setPaintProperty("stop-circle", "circle-stroke-opacity", ["case", isA, 1, 0.35]);
+    map.setFilter("stop-num", isA);
+    map.setFilter("stop-label", isA);
+    // draw active features on top
+    map.setLayoutProperty("stop-circle", "circle-sort-key", ["case", isA, 1, 0]);
+  }
+
+  function flyToTrip(t, instant = false) {
+    if (!mapReady || !t.stops.length) return;
+    const pad = narrowMQ.matches ? { top: 40, bottom: 70, left: 40, right: 40 } : { top: 80, bottom: 150, left: 80, right: 80 };
+    if (t.stops.length === 1) {
+      map.flyTo({ center: [t.stops[0].lng, t.stops[0].lat], zoom: 6, duration: instant ? 0 : 1600, essential: true });
+      return;
+    }
+    const b = new maplibregl.LngLatBounds();
+    t.stops.forEach((s) => b.extend([s.lng, s.lat]));
+    const opts = { padding: pad, maxZoom: 7, duration: instant ? 0 : 1800, essential: true };
+    if (state.projection === "globe") opts.maxZoom = 4.5;
+    try { map.fitBounds(b, opts); } catch (err) { console.warn(err); }
+  }
+
+  // projection toggle
+  $("#projSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-proj]");
+    if (!b) return;
+    state.projection = b.dataset.proj;
+    $$("#projSeg button").forEach((x) => x.classList.toggle("on", x === b));
+    if (mapReady) {
+      map.setProjection({ type: state.projection });
+      const t = tripById(state.activeId);
+      if (state.projection === "globe") map.easeTo({ zoom: Math.min(map.getZoom(), 2.6), duration: 900 });
+      setTimeout(() => t && flyToTrip(t), state.projection === "globe" ? 950 : 50);
+    }
+  });
+
+  // tabs
+  $("#tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (!b) return;
+    state.tab = b.dataset.tab;
+    $$("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    state.activeId = null;
+    renderJournal();
+    updateMapData();
+    window.scrollTo({ top: 0, behavior: "instant" });
+  });
+
+  // ---------- journal events ----------
+  journal.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-action]");
+    if (!el) return;
+    const id = Number(el.dataset.trip);
+    switch (el.dataset.action) {
+      case "lightbox": openLightbox(id, Number(el.dataset.idx)); break;
+      case "edit": openTripForm(id); break;
+      case "delete": confirmDelete(id); break;
+      case "media": openMedia(id, el.dataset.mt || null); break;
+      case "new": openTripForm(null); break;
+      case "fly": setActive(id, true); break;
+      case "stop": {
+        const s = tripById(id).stops[Number(el.dataset.k)];
+        state.activeId = id;
+        applyMapActive();
+        if (mapReady) map.flyTo({ center: [s.lng, s.lat], zoom: state.projection === "globe" ? 5 : 8, duration: 1400 });
+        break;
+      }
+      case "note-del": {
+        tripById(id).notes.splice(Number(el.dataset.k), 1);
+        rerenderTrip(id);
+        break;
+      }
+    }
+  });
+  journal.addEventListener("change", (e) => {
+    const el = e.target.closest("[data-action=note-toggle]");
+    if (!el) return;
+    const id = Number(el.dataset.trip);
+    tripById(id).notes[Number(el.dataset.k)].done = el.checked;
+    rerenderTrip(id);
+  });
+  journal.addEventListener("keydown", (e) => {
+    const el = e.target.closest("[data-note-add]");
+    if (!el || e.key !== "Enter" || !el.value.trim()) return;
+    const id = Number(el.dataset.noteAdd);
+    tripById(id).notes.push({ text: el.value.trim(), done: false });
+    rerenderTrip(id);
+    $(`#trip-${id} [data-note-add]`)?.focus();
+  });
+
+  function rerenderTrip(id) {
+    const el = document.getElementById("trip-" + id);
+    const t = tripById(id);
+    if (!el || !t) return renderJournal();
+    const tmp = document.createElement("div");
+    tmp.innerHTML = tripHTML(t);
+    const nu = tmp.firstElementChild;
+    el.replaceWith(nu);
+    if (io) io.observe(nu);
+    nu.style.opacity = state.activeId === id ? "1" : ".55";
+  }
+
+  // ---------- dialogs: shared ----------
+  $$("dialog").forEach((d) => {
+    d.addEventListener("click", (e) => {
+      if (e.target.closest("[data-close]")) d.close();
+      if (e.target === d) d.close(); // backdrop
+    });
+  });
+  $("#newTripBtn").addEventListener("click", () => openTripForm(null));
+
+  // ---------- trip form ----------
+  const GAZETTEER = [
+    ["Tokyo", "Japan", 139.69, 35.69], ["Kyoto", "Japan", 135.77, 35.01], ["Osaka", "Japan", 135.50, 34.69], ["Hakone", "Japan", 139.02, 35.23],
+    ["Hiroshima", "Japan", 132.46, 34.39], ["Seoul", "South Korea", 126.98, 37.57], ["Busan", "South Korea", 129.08, 35.18],
+    ["Lisbon", "Portugal", -9.14, 38.72], ["Porto", "Portugal", -8.61, 41.15], ["Sintra", "Portugal", -9.39, 38.80], ["Lagos", "Portugal", -8.67, 37.10],
+    ["Reykjavík", "Iceland", -21.94, 64.15], ["Vík", "Iceland", -19.01, 63.42], ["Akureyri", "Iceland", -18.09, 65.68],
+    ["Paris", "France", 2.35, 48.86], ["Lyon", "France", 4.84, 45.76], ["Nice", "France", 7.26, 43.70],
+    ["Rome", "Italy", 12.50, 41.90], ["Florence", "Italy", 11.26, 43.77], ["Venice", "Italy", 12.33, 45.44], ["Naples", "Italy", 14.27, 40.85],
+    ["Cortina d'Ampezzo", "Italy", 12.14, 46.54], ["Bolzano", "Italy", 11.35, 46.50], ["Milan", "Italy", 9.19, 45.46],
+    ["Barcelona", "Spain", 2.17, 41.39], ["Madrid", "Spain", -3.70, 40.42], ["Seville", "Spain", -5.98, 37.39], ["Granada", "Spain", -3.60, 37.18],
+    ["Berlin", "Germany", 13.40, 52.52], ["Munich", "Germany", 11.58, 48.14], ["Vienna", "Austria", 16.37, 48.21],
+    ["Athens", "Greece", 23.73, 37.98], ["Santorini", "Greece", 25.43, 36.39], ["Istanbul", "Türkiye", 28.98, 41.01], ["Cappadocia", "Türkiye", 34.83, 38.64],
+    ["Marrakech", "Morocco", -7.99, 31.63], ["Fes", "Morocco", -5.00, 34.03], ["Chefchaouen", "Morocco", -5.27, 35.17], ["Merzouga", "Morocco", -4.01, 31.10],
+    ["Cairo", "Egypt", 31.24, 30.04], ["Cape Town", "South Africa", 18.42, -33.92], ["Nairobi", "Kenya", 36.82, -1.29], ["Zanzibar", "Tanzania", 39.19, -6.16],
+    ["Dubai", "UAE", 55.27, 25.20], ["Muscat", "Oman", 58.41, 23.59], ["Bangkok", "Thailand", 100.50, 13.76], ["Chiang Mai", "Thailand", 98.99, 18.79],
+    ["Hanoi", "Vietnam", 105.85, 21.03], ["Hoi An", "Vietnam", 108.34, 15.88], ["Bali", "Indonesia", 115.19, -8.41], ["Singapore", "Singapore", 103.82, 1.35],
+    ["Sydney", "Australia", 151.21, -33.87], ["Melbourne", "Australia", 144.96, -37.81], ["Queenstown", "New Zealand", 168.66, -45.03],
+    ["New York", "USA", -74.01, 40.71], ["San Francisco", "USA", -122.42, 37.77], ["Yosemite Valley", "USA", -119.59, 37.75],
+    ["Mexico City", "Mexico", -99.13, 19.43], ["Oaxaca", "Mexico", -96.73, 17.07], ["Cusco", "Peru", -71.97, -13.53], ["Lima", "Peru", -77.04, -12.05],
+    ["Santiago", "Chile", -70.67, -33.45], ["Puerto Natales", "Chile", -72.51, -51.73], ["El Chaltén", "Argentina", -72.89, -49.33],
+    ["Buenos Aires", "Argentina", -58.38, -34.60], ["Rio de Janeiro", "Brazil", -43.17, -22.91], ["Vancouver", "Canada", -123.12, 49.28], ["Banff", "Canada", -115.57, 51.18],
+  ].map(([name, country, lng, lat]) => ({ name, country, lng, lat }));
+
+  const tripDlg = $("#tripDlg");
+  let form = { editingId: null, stops: [], cover: "" };
+  const fResults = $("#fResults");
+
+  function openTripForm(id) {
+    const t = id ? tripById(id) : null;
+    form = { editingId: id, stops: t ? t.stops.map((s) => ({ ...s })) : [], cover: t?.cover || "" };
+    $("#tripDlgTitle").textContent = t ? "Edit trip" : "A new trip";
+    $("#tripSave").textContent = t ? "Save changes" : "Create trip";
+    $("#tripHint").textContent = t ? `${t.media.length} media items are kept as they are.` : "You can add media after creating.";
+    $("#fTitle").value = t?.title || "";
+    $$("input[name=status]").forEach((r) => r.checked = r.value === (t?.status || "planned"));
+    $("#fStart").value = t?.start || "";
+    $("#fEnd").value = t?.end || "";
+    $("#fSummary").value = t?.summary || "";
+    $("#fTags").value = (t?.tags || []).join(", ");
+    $("#fPlace").value = "";
+    fResults.hidden = true;
+    const color = t?.color || COLORS[state.trips.length % COLORS.length];
+    const palette = COLORS.includes(color) ? COLORS : [color, ...COLORS.slice(0, -1)];
+    $("#fColors").innerHTML = palette.map((c) => `<label style="background:${c}"><input type="radio" name="color" value="${c}" ${c === color ? "checked" : ""}></label>`).join("");
+    renderCovers(t);
+    renderFormStops();
+    tripDlg.showModal();
+    setTimeout(() => $("#fTitle").focus(), 30);
+  }
+
+  function renderCovers(t) {
+    const fromTrip = (t?.media || []).filter((m) => m.type !== "video").slice(0, 3).map((m) => m.url);
+    const stock = ["atlas-a", "atlas-b", "atlas-c", "atlas-d"].map((s) => pic(s, 900, 300));
+    const opts = [...new Set([...(form.cover ? [form.cover] : []), ...fromTrip, ...stock])].slice(0, 7);
+    $("#fCovers").innerHTML = `<label><input type="radio" name="cover" value="" ${!form.cover ? "checked" : ""}>None</label>` +
+      opts.map((u) => `<label><input type="radio" name="cover" value="${esc(u)}" ${u === form.cover ? "checked" : ""}><img src="${esc(u)}" alt=""></label>`).join("");
+  }
+
+  function renderFormStops() {
+    $("#fStops").innerHTML = form.stops.map((s, k) => `<li>
+        <span class="n">${k + 1}</span><span>${esc(s.name)} <small>${esc(s.country || `${s.lat.toFixed(2)}, ${s.lng.toFixed(2)}`)}</small></span>
+        <span class="ctl">
+          <button type="button" data-sm="up" data-k="${k}" ${k === 0 ? "disabled" : ""} title="Move up">↑</button>
+          <button type="button" data-sm="down" data-k="${k}" ${k === form.stops.length - 1 ? "disabled" : ""} title="Move down">↓</button>
+          <button type="button" data-sm="del" data-k="${k}" title="Remove">×</button>
+        </span></li>`).join("");
+  }
+  $("#fStops").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-sm]");
+    if (!b) return;
+    const k = Number(b.dataset.k), s = form.stops;
+    if (b.dataset.sm === "del") s.splice(k, 1);
+    if (b.dataset.sm === "up" && k > 0) [s[k - 1], s[k]] = [s[k], s[k - 1]];
+    if (b.dataset.sm === "down" && k < s.length - 1) [s[k + 1], s[k]] = [s[k], s[k + 1]];
+    renderFormStops();
+  });
+
+  let searchTimer, searchHits = [], hl = 0;
+  $("#fPlace").addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    clearTimeout(searchTimer);
+    if (q.length < 2) { fResults.hidden = true; return; }
+    fResults.hidden = false;
+    fResults.innerHTML = `<div class="status">Searching Nominatim…</div>`;
+    searchTimer = setTimeout(() => {
+      searchHits = GAZETTEER.filter((p) => p.name.toLowerCase().includes(q) || p.country.toLowerCase().includes(q))
+        .sort((a, b) => (b.name.toLowerCase().startsWith(q)) - (a.name.toLowerCase().startsWith(q))).slice(0, 7);
+      hl = 0;
+      drawHits(q);
+    }, 280);
+  });
+  function drawHits(q) {
+    fResults.innerHTML = searchHits.length
+      ? searchHits.map((p, i) => `<button type="button" data-hit="${i}" class="${i === hl ? "hl" : ""}">${esc(p.name)} <small>${esc(p.country)} · ${p.lat.toFixed(2)}, ${p.lng.toFixed(2)}</small></button>`).join("")
+      : `<div class="status">No places match “${esc(q)}”. (Mock gazetteer — real app queries Nominatim.)</div>`;
+  }
+  $("#fPlace").addEventListener("keydown", (e) => {
+    if (fResults.hidden || !searchHits.length) return;
+    if (e.key === "ArrowDown") { hl = (hl + 1) % searchHits.length; drawHits(); e.preventDefault(); }
+    if (e.key === "ArrowUp") { hl = (hl - 1 + searchHits.length) % searchHits.length; drawHits(); e.preventDefault(); }
+    if (e.key === "Enter") { e.preventDefault(); addStop(searchHits[hl]); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); fResults.hidden = true; }
+  });
+  fResults.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-hit]");
+    if (b) addStop(searchHits[Number(b.dataset.hit)]);
+  });
+  function addStop(p) {
+    form.stops.push({ name: p.name, country: p.country, lng: p.lng, lat: p.lat });
+    $("#fPlace").value = "";
+    fResults.hidden = true;
+    renderFormStops();
+    $("#fPlace").focus();
+  }
+
+  $("#tripForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const title = $("#fTitle").value.trim();
+    const start = $("#fStart").value, end = $("#fEnd").value;
+    if (!title || !start || !end) return;
+    if (end < start) { toast("End date is before the start date."); return; }
+    const data = {
+      title, start, end,
+      status: $("input[name=status]:checked").value,
+      summary: $("#fSummary").value.trim(),
+      tags: $("#fTags").value.split(",").map((s) => s.trim()).filter(Boolean),
+      color: ($("input[name=color]:checked") || {}).value || COLORS[0],
+      cover: ($("input[name=cover]:checked") || {}).value || "",
+      stops: form.stops.map(({ name, lng, lat, country }) => ({ name, lng, lat, country })),
+    };
+    let id = form.editingId;
+    if (id) {
+      Object.assign(tripById(id), data);
+      toast("Trip updated");
+    } else {
+      id = Math.max(0, ...state.trips.map((t) => t.id)) + 1;
+      state.trips.push({ id, media: [], notes: [], ...data });
+      toast(`“${title}” added to the journal`);
+    }
+    tripDlg.close();
+    const t = tripById(id);
+    if (state.tab !== "all" && state.tab !== t.status) {
+      state.tab = "all";
+      $$("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === "all"));
+    }
+    renderJournal();
+    updateMapData();
+    setActive(id, true);
+    requestAnimationFrame(() => scrollToTrip(id));
+  });
+
+  // ---------- delete ----------
+  const confirmDlg = $("#confirmDlg");
+  let pendingDelete = null;
+  function confirmDelete(id) {
+    const t = tripById(id);
+    pendingDelete = id;
+    $("#cfTitle").textContent = `Delete “${t.title}”?`;
+    $("#cfText").textContent = `This removes the trip, its ${t.stops.length} stops and ${t.media.length} media references. Photos in Immich and local folders are not touched.`;
+    confirmDlg.showModal();
+  }
+  $("#cfOk").addEventListener("click", () => {
+    const t = tripById(pendingDelete);
+    state.trips = state.trips.filter((x) => x.id !== pendingDelete);
+    confirmDlg.close();
+    if (state.activeId === pendingDelete) state.activeId = null;
+    renderJournal();
+    updateMapData();
+    toast(`Deleted “${t.title}”`);
+  });
+
+  // ---------- add media ----------
+  const mediaDlg = $("#mediaDlg");
+  const mPanel = $("#mPanel");
+  let md = null;
+
+  const ALBUMS = (t) => [
+    { id: "date", name: `Suggested · taken ${fmtShort(t)}`, count: 24 },
+    { id: "trip-album", name: `${t.title} (album)`, count: 186 },
+    { id: "favs", name: "Favourites", count: 412 },
+    { id: "camera", name: "Camera roll · all", count: 18233 },
+  ];
+  function fmtShort(t) {
+    const s = parseD(t.start), e = parseD(t.end);
+    return `${s.getDate()} ${MON[s.getMonth()]} – ${e.getDate()} ${MON[e.getMonth()]} ${e.getFullYear()}`;
+  }
+  const LOCAL_TREE = {
+    "": ["2025-japan", "2024-portugal", "2023-iceland", "phone-exports", "gopro"],
+    "2025-japan": ["tokyo", "kyoto", "hiroshima"],
+  };
+  function localFiles(path) {
+    const seed = path.replace(/\W/g, "") || "root";
+    return Array.from({ length: 10 }, (_, i) => {
+      const vid = i % 4 === 3;
+      return { name: `${vid ? "VID" : "IMG"}_${(2041 + i * 7)}.${vid ? "mp4" : "jpg"}`, url: pic(`loc-${seed}-${i}`, 400, 400), vid, dur: vid ? `0:${String(10 + i * 3).slice(0, 2)}` : "" };
+    });
+  }
+
+  function openMedia(id, tab) {
+    const t = tripById(id);
+    md = { tripId: id, tab: tab || (t.status === "planned" ? "link" : "immich"), album: "date", immich: new Set(), local: new Map(), path: "", link: null, linkUrl: "", archive: true };
+    $("#mdTrip").textContent = t.title;
+    mediaDlg.showModal();
+    renderMedia();
+  }
+  $("#mTabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-mt]");
+    if (!b) return;
+    md.tab = b.dataset.mt;
+    renderMedia();
+  });
+
+  function immichAssets(t) {
+    const n = md.album === "date" ? 18 : 15;
+    const s = parseD(t.start);
+    return Array.from({ length: n }, (_, i) => {
+      const d = new Date(s.getTime() + Math.floor(i / 2) * DAY);
+      const vid = i % 6 === 4;
+      return { key: `${md.album}-${i}`, url: pic(`im-${t.id}-${md.album}-${i}`, 400, 400), when: `${d.getDate()} ${MON[d.getMonth()]}`, vid, dur: vid ? `0:${18 + i}` : "" };
+    });
+  }
+
+  function renderMedia() {
+    const t = tripById(md.tripId);
+    $$("#mTabs button").forEach((b) => b.classList.toggle("on", b.dataset.mt === md.tab));
+    let html = "";
+    if (md.tab === "immich") {
+      const assets = immichAssets(t);
+      const near = t.stops.slice(0, 3).map((s) => s.name).join(", ");
+      html = `<div class="bar">
+          <select class="input" id="mAlbum">${ALBUMS(t).map((a) => `<option value="${a.id}" ${a.id === md.album ? "selected" : ""}>${esc(a.name)} — ${a.count.toLocaleString()}</option>`).join("")}</select>
+          <button class="linkbtn" id="mSelAll">Select all</button>
+        </div>
+        <div class="bar"><span class="meta">${md.album === "date"
+          ? `Photos taken <b>${fmtShort(t)}</b>${near ? ` near <b>${esc(near)}</b>` : ""}`
+          : `Linking an album keeps it live — new photos added in Immich appear here automatically.`}</span></div>
+        ${t.status === "planned" && md.album === "date" ? `<div class="hintbox">This trip hasn’t happened yet — nothing in Immich for these dates.<br>Pick an album instead, or save links in the Link tab.</div>` :
+        `<div class="pickgrid">${assets.map((a) => `<button class="pick ${md.immich.has(a.key) ? "on" : ""}" data-pick="${a.key}" data-url="${esc(a.url)}" data-vid="${a.vid ? 1 : ""}" data-dur="${a.dur}">
+          <img src="${esc(a.url)}" alt="" loading="lazy"><span class="chk"></span><span class="when">${a.when}</span>${a.vid ? `<span class="vd">▶ ${a.dur}</span>` : ""}</button>`).join("")}</div>`}`;
+    } else if (md.tab === "local") {
+      const parts = md.path ? md.path.split("/") : [];
+      const sub = LOCAL_TREE[md.path] ?? (parts.length === 0 ? LOCAL_TREE[""] : []);
+      const files = md.path ? localFiles(md.path) : [];
+      html = `<div class="bar"><div class="crumbs"><button data-path="">/media/trips</button>${parts.map((p, i) => `<span class="s">/</span><button data-path="${esc(parts.slice(0, i + 1).join("/"))}">${esc(p)}</button>`).join("")}</div></div>
+        ${sub.length ? `<div class="folders">${sub.map((f) => `<button class="folder" data-path="${esc((md.path ? md.path + "/" : "") + f)}"><span class="ic"></span><span>${esc(f)}<small>${12 + f.length * 9} items</small></span></button>`).join("")}</div>` : ""}
+        ${files.length ? `<div class="pickgrid">${files.map((f) => {
+          const key = md.path + "/" + f.name;
+          return `<div><button class="pick ${md.local.has(key) ? "on" : ""}" data-lpick="${esc(key)}" data-url="${esc(f.url)}" data-vid="${f.vid ? 1 : ""}" data-dur="${f.dur}" data-name="${esc(f.name)}" style="width:100%">
+            <img src="${esc(f.url)}" alt="" loading="lazy"><span class="chk"></span>${f.vid ? `<span class="vd">▶ ${f.dur}</span>` : ""}</button><div class="fname">${esc(f.name)}</div></div>`;
+        }).join("")}</div>` : (!md.path ? `<div class="hintbox">Read-only mount at <code>/media/trips</code>. Pick a folder.</div>` : "")}`;
+    } else {
+      html = `<div class="linkin"><input type="url" class="input" id="mUrl" placeholder="Paste an Instagram reel, TikTok, YouTube or any web link" value="${esc(md.linkUrl)}"></div>
+        <div class="tries">Try:
+          <button data-try="https://www.instagram.com/reel/C9xTrail/">Instagram reel</button>
+          <button data-try="https://www.tiktok.com/@wanderfood/video/7301">TikTok</button>
+          <button data-try="https://www.youtube.com/watch?v=pAtag0nia">YouTube</button>
+          <button data-try="https://www.atlasobscura.com/places/blue-city">Blog post</button>
+        </div>
+        <div id="mPreview">${previewHTML()}</div>`;
+    }
+    mPanel.innerHTML = html;
+    if (md.tab === "link") {
+      const u = $("#mUrl");
+      u.addEventListener("input", () => fetchPreview(u.value.trim()));
+      setTimeout(() => u.focus(), 20);
+    }
+    $("#mAlbum")?.addEventListener("change", (e) => { md.album = e.target.value; renderMedia(); });
+    updateMediaFooter();
+  }
+
+  function detectProvider(url) {
+    if (/instagram\.com/i.test(url)) return "instagram";
+    if (/tiktok\.com/i.test(url)) return "tiktok";
+    if (/youtube\.com|youtu\.be/i.test(url)) return "youtube";
+    return "web";
+  }
+  let previewTimer;
+  function fetchPreview(url) {
+    md.linkUrl = url;
+    clearTimeout(previewTimer);
+    md.link = null;
+    const box = $("#mPreview");
+    if (!/^https?:\/\/\S+\.\S+/.test(url)) { box.innerHTML = previewHTML(); updateMediaFooter(); return; }
+    md.link = "loading";
+    box.innerHTML = previewHTML();
+    updateMediaFooter();
+    previewTimer = setTimeout(() => {
+      const provider = detectProvider(url);
+      let slug = url;
+      try { slug = hostOf(url) + new URL(url).pathname; } catch { /* keep raw */ }
+      const titles = {
+        instagram: "Sunrise from the ridge — 3 days on the trail",
+        tiktok: "48 hours eating through the old town 🍢",
+        youtube: "Everything I packed (and what I'd leave home)",
+        web: "A local's guide to the quiet corners",
+      };
+      const authors = { instagram: "@trailnotes", tiktok: "@wanderfood", youtube: "Field & Pack", web: hostOf(url) };
+      md.link = {
+        provider, url,
+        title: titles[provider], author: authors[provider],
+        thumb: provider === "youtube" || provider === "web" ? pic("lk-" + slug, 640, 360) : pic("lk-" + slug, 540, 960),
+        via: provider === "instagram" ? "OpenGraph blocked → yt-dlp --dump-json" : provider === "web" ? "OpenGraph" : "yt-dlp --dump-json",
+      };
+      $("#mPreview").innerHTML = previewHTML();
+      updateMediaFooter();
+    }, 650);
+  }
+  function previewHTML() {
+    if (!md.link) return `<div class="hintbox">Paste a link to fetch a preview card.</div>`;
+    if (md.link === "loading") return `<div class="preview"><div class="thumb shimmer"></div><div style="flex:1"><div class="shimmer" style="height:14px;width:30%;margin:8px 0"></div><div class="shimmer" style="height:22px;width:80%;margin:10px 0"></div><div class="shimmer" style="height:12px;width:50%"></div></div></div>`;
+    const l = md.link;
+    const wide = l.provider === "youtube" || l.provider === "web";
+    const video = l.provider !== "web";
+    return `<div class="preview">
+      <div class="thumb ${wide ? "wide" : ""}"><img src="${esc(l.thumb)}" alt="">${video ? '<span class="play" style="width:36px;height:36px"></span>' : ""}</div>
+      <div style="flex:1;min-width:0">
+        <span class="badge inline src-${l.provider}"><i></i>${SRC_LABEL[l.provider]}</span>
+        <h5>${esc(l.title)}</h5>
+        <div class="host">${esc(l.author)} · ${esc(l.url)}</div>
+        <div class="host" style="margin-top:4px;font-style:italic">Preview via ${esc(l.via)}</div>
+        <div class="opts">
+          <label><input type="text" class="input" id="mCaption" value="${esc(l.title)}" style="padding:6px 9px"></label>
+          ${video ? `<label><input type="checkbox" id="mArchive" ${md.archive ? "checked" : ""}> Archive a copy with yt-dlp (survives deletion upstream)</label>` : ""}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  mPanel.addEventListener("click", (e) => {
+    const p = e.target.closest("[data-pick]");
+    if (p) { md.immich.has(p.dataset.pick) ? md.immich.delete(p.dataset.pick) : md.immich.add(p.dataset.pick); p.classList.toggle("on"); updateMediaFooter(); return; }
+    const lp = e.target.closest("[data-lpick]");
+    if (lp) {
+      const k = lp.dataset.lpick;
+      if (md.local.has(k)) md.local.delete(k);
+      else md.local.set(k, { url: lp.dataset.url, vid: !!lp.dataset.vid, dur: lp.dataset.dur, name: lp.dataset.name });
+      lp.classList.toggle("on"); updateMediaFooter(); return;
+    }
+    const f = e.target.closest("[data-path]");
+    if (f) { md.path = f.dataset.path; renderMedia(); return; }
+    const tr = e.target.closest("[data-try]");
+    if (tr) { $("#mUrl").value = tr.dataset.try; fetchPreview(tr.dataset.try); return; }
+    if (e.target.id === "mSelAll") {
+      const all = $$("[data-pick]", mPanel);
+      const allOn = all.every((x) => md.immich.has(x.dataset.pick));
+      all.forEach((x) => allOn ? md.immich.delete(x.dataset.pick) : md.immich.add(x.dataset.pick));
+      renderMedia();
+    }
+  });
+  mPanel.addEventListener("change", (e) => { if (e.target.id === "mArchive") md.archive = e.target.checked; });
+
+  function updateMediaFooter() {
+    const counts = { immich: md.immich.size, local: md.local.size, link: md.link && md.link !== "loading" ? 1 : 0 };
+    $$("#mTabs button").forEach((b) => {
+      const s = $(".sel", b), c = counts[b.dataset.mt];
+      s.hidden = !c; s.textContent = c;
+    });
+    const total = counts.immich + counts.local + counts.link;
+    const btn = $("#mAdd");
+    btn.disabled = !total;
+    btn.textContent = total ? `Add ${total} item${total > 1 ? "s" : ""}` : "Add";
+    $("#mHint").textContent = md.tab === "link" ? "Links are saved with a preview; archiving runs in the background."
+      : md.tab === "local" ? "Paths are stored relative to the mounted root."
+      : "Immich assets are referenced by ID and streamed through the backend.";
+  }
+
+  $("#mAdd").addEventListener("click", () => {
+    const t = tripById(md.tripId);
+    const added = [];
+    immichAssets(t).forEach((a) => {
+      if (md.immich.has(a.key)) added.push({ src: "immich", type: a.vid ? "video" : "image", url: a.url.replace("/400/400", "/600/450"), caption: `Immich · ${a.when}`, duration: a.dur || undefined });
+    });
+    // also include immich selections from other albums (keys not in current album)
+    md.immich.forEach((key) => {
+      if (!key.startsWith(md.album + "-")) {
+        const [album, i] = [key.slice(0, key.lastIndexOf("-")), key.slice(key.lastIndexOf("-") + 1)];
+        added.push({ src: "immich", type: "image", url: pic(`im-${t.id}-${album}-${i}`, 600, 450), caption: "From Immich album" });
+      }
+    });
+    md.local.forEach((f, path) => added.push({ src: "local", type: f.vid ? "video" : "image", url: f.url.replace("/400/400", "/600/600"), caption: f.name + " · " + path.split("/").slice(0, -1).join("/"), duration: f.dur || undefined }));
+    if (md.link && md.link !== "loading") {
+      const cap = ($("#mCaption")?.value || md.link.title).trim();
+      added.push({ src: md.link.provider, type: "post", url: md.link.thumb, caption: cap, link: md.link.url, archived: md.link.provider !== "web" && md.archive });
+    }
+    t.media.push(...added);
+    mediaDlg.close();
+    rerenderTrip(t.id);
+    toast(`Added ${added.length} item${added.length > 1 ? "s" : ""} to “${t.title}”${md.link && md.archive && md.link.provider !== "web" ? " · archiving with yt-dlp…" : ""}`);
+  });
+
+  // ---------- lightbox ----------
+  const lb = $("#lightbox");
+  let lbState = null;
+  function openLightbox(tripId, idx) {
+    lbState = { tripId, idx };
+    lb.classList.add("open");
+    lb.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    drawLightbox();
+  }
+  function closeLightbox() {
+    lb.classList.remove("open");
+    lb.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    lbState = null;
+  }
+  function drawLightbox() {
+    const t = tripById(lbState.tripId);
+    const list = t.media;
+    const m = list[lbState.idx];
+    const big = m.url.replace(/\/(\d+)\/(\d+)$/, (_, w, h) => `/${w * 2}/${h * 2}`);
+    const isVid = m.type === "video" || (m.type === "post" && m.src !== "web");
+    let note = "";
+    if (m.type === "video") note = m.src === "immich" ? "Plays via /api/immich/assets/…/video (mock)" : "Streams from local mount with range requests (mock)";
+    else if (m.type === "post") note = m.archived ? "Archived copy available (yt-dlp)" : "Opens the original post";
+    $("#lbStage").innerHTML = `<div class="media"><img src="${esc(m.url)}" alt="${esc(m.caption)}" style="min-width:min(560px,80vw)">${isVid ? '<span class="play"></span>' : ""}${note ? `<span class="note">${esc(note)}</span>` : ""}</div>`;
+    const hi = new Image();
+    const shown = lbState.idx;
+    hi.onload = () => { const el = $("#lbStage img"); if (el && lbState && lbState.idx === shown) { el.src = big; el.style.minWidth = ""; } };
+    hi.src = big;
+    $("#lbInfo").innerHTML = `<span class="badge inline src-${m.src}" style="background:rgba(255,255,255,.12);color:#f3ede2"><i></i>${SRC_LABEL[m.src] || m.src}</span>
+      <span class="cap">${esc(m.caption)}</span>
+      ${m.duration ? `<span class="idx">${esc(m.duration)}</span>` : ""}
+      <span class="idx">${lbState.idx + 1} / ${list.length} · ${esc(t.title)}</span>
+      ${m.link ? `<a href="${esc(m.link)}" target="_blank" rel="noopener">Open on ${SRC_LABEL[m.src] || "web"} ↗</a>` : ""}`;
+  }
+  function stepLightbox(d) {
+    const n = tripById(lbState.tripId).media.length;
+    lbState.idx = (lbState.idx + d + n) % n;
+    drawLightbox();
+  }
+  $("#lbClose").addEventListener("click", closeLightbox);
+  $("#lbPrev").addEventListener("click", () => stepLightbox(-1));
+  $("#lbNext").addEventListener("click", () => stepLightbox(1));
+  lb.addEventListener("click", (e) => { if (e.target === lb || e.target.id === "lbStage") closeLightbox(); });
+  document.addEventListener("keydown", (e) => {
+    if (!lbState) return;
+    if (e.key === "Escape") closeLightbox();
+    if (e.key === "ArrowLeft") stepLightbox(-1);
+    if (e.key === "ArrowRight") stepLightbox(1);
+  });
+
+  // ---------- go ----------
+  renderJournal();
+  // hide the "scroll" hint after the first scroll
+  window.addEventListener("scroll", () => { $("#mapnote").style.opacity = window.scrollY > 120 ? "0" : "1"; }, { passive: true });
+  $("#mapnote").style.transition = "opacity .4s";
+})();
+</script>
+</body>
+</html>

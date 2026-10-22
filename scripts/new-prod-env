@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Generate production env files with fresh random secrets, one file per service so
+# each container only sees what it needs. Refuses to overwrite existing files.
+#
+#   scripts/new-prod-env <dir> <public_url> <files_url>
+#   e.g. scripts/new-prod-env ~/server/navigator https://navigator.example.com https://files.navigator.example.com
+#
+# Afterwards, fill in WORKOS_API_KEY and WORKOS_CLIENT_ID (production environment) in <dir>/navigator.env.
+set -euo pipefail
+DIR="${1:?usage: new-prod-env <dir> <public_url> <files_url>}"
+PUBLIC_URL="${2:?public url, e.g. https://navigator.example.com}"
+FILES_URL="${3:?files url, e.g. https://files.navigator.example.com}"
+hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+
+mkdir -p "$DIR"
+for f in navigator.env db.env storage.env; do
+  [[ -e "$DIR/$f" ]] && { echo "refusing to overwrite $DIR/$f" >&2; exit 1; }
+done
+
+owner_pw=$(hex 24) app_pw=$(hex 24)
+key_id="GK$(hex 12)" key_secret=$(hex 32)
+umask 077
+
+cat >"$DIR/db.env" <<ENV
+# navigator-db only. Used by the image's first start (deploy/initdb).
+POSTGRES_PASSWORD=$(hex 24)
+NAVIGATOR_DB_OWNER_PASSWORD=$owner_pw
+NAVIGATOR_DB_APP_PASSWORD=$app_pw
+ENV
+
+cat >"$DIR/storage.env" <<ENV
+# navigator-storage (Garage) only.
+GARAGE_RPC_SECRET=$(hex 32)
+GARAGE_ADMIN_TOKEN=$(hex 32)
+ENV
+
+cat >"$DIR/navigator.env" <<ENV
+# navigator app only.
+NAVIGATOR_ENV=prod
+NAVIGATOR_PUBLIC_URL=$PUBLIC_URL
+NAVIGATOR_LOG_LEVEL=info
+NAVIGATOR_DATABASE_URL=postgresql+psycopg://navigator_app:$app_pw@navigator-db:5432/navigator
+NAVIGATOR_MIGRATE_DATABASE_URL=postgresql+psycopg://navigator_owner:$owner_pw@navigator-db:5432/navigator
+NAVIGATOR_S3_ENDPOINT=http://navigator-storage:3900
+NAVIGATOR_S3_PUBLIC_ENDPOINT=$FILES_URL
+NAVIGATOR_S3_REGION=garage
+NAVIGATOR_S3_BUCKET=navigator-media
+NAVIGATOR_S3_ACCESS_KEY_ID=$key_id
+NAVIGATOR_S3_SECRET_ACCESS_KEY=$key_secret
+# WorkOS *production* environment: paste from the WorkOS dashboard
+WORKOS_API_KEY=
+WORKOS_CLIENT_ID=
+ENV
+echo "wrote $DIR/{navigator,db,storage}.env (mode 600). Fill in WORKOS_* in navigator.env."
