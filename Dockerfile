@@ -2,7 +2,7 @@
 # Navigator: one image serving the API and the built single-page app.
 # Built in CI and pulled by the server; contains no configuration or secrets.
 
-FROM node:24.22.1-alpine3.24 AS web
+FROM node:26.12.0-alpine3.24 AS web
 WORKDIR /web
 # Node 25+ no longer bundles corepack; it installs the pnpm pinned in package.json
 RUN npm install -g corepack@0.36.0 && corepack enable
