@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Stand up the whole local demo in one go: Postgres + Garage (scripts/dev-up), the API
+# (scripts/dev-backend) and the web app (Vite), with the web app on 0.0.0.0:5173 so
+# other machines on the LAN or tailnet can open it at http://<this host>:5173.
+# The browser only ever needs :5173 (Vite proxies /api and /auth to the API), so the
+# API, Postgres and Garage stay on 127.0.0.1. Ctrl-C stops the API and web app; the
+# containers keep running (scripts/dev-down stops them).
+# This machine's hostnames are detected at runtime and never written to the repo.
+# Extra names: NAVIGATOR_DEV_ALLOWED_HOSTS=a,b in .dev/navigator.env.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+APP_PORT=8930 WEB_PORT=5173
+
+"$ROOT/scripts/dev-up"
+(cd "$ROOT/frontend" && pnpm install --frozen-lockfile --silent)
+set -a; source "$ROOT/.dev/navigator.env"; set +a
+
+hosts=("$(hostname)" "${NAVIGATOR_DEV_ALLOWED_HOSTS:-}")
+urls=("http://$(hostname):$WEB_PORT")
+lan_ip=$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+[[ -n "$lan_ip" ]] && urls+=("http://$lan_ip:$WEB_PORT")
+if command -v tailscale >/dev/null && ts_json=$(tailscale status --json 2>/dev/null); then
+  ts_name=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))' <<<"$ts_json" 2>/dev/null || true)
+  ts_ip=$(tailscale ip -4 2>/dev/null | head -1 || true)
+  [[ -n "$ts_name" ]] && hosts+=("$ts_name") && urls+=("http://$ts_name:$WEB_PORT")
+  [[ -n "$ts_ip" ]] && urls+=("http://$ts_ip:$WEB_PORT")
+fi
+NAVIGATOR_DEV_ALLOWED_HOSTS=$(IFS=,; echo "${hosts[*]}")
+export NAVIGATOR_DEV_ALLOWED_HOSTS
+
+# reuse an API that's already running (e.g. scripts/dev-backend in another terminal)
+if ss -ltnH "sport = :$APP_PORT" | grep -q .; then
+  echo "API already listening on 127.0.0.1:$APP_PORT; reusing it"
+else
+  "$ROOT/scripts/dev-backend" &
+  backend_pid=$!
+  trap 'kill "$backend_pid" 2>/dev/null; wait "$backend_pid" 2>/dev/null' EXIT
+  for _ in $(seq 60); do
+    curl -fsS -o /dev/null "http://127.0.0.1:$APP_PORT/healthz" 2>/dev/null && break
+    kill -0 "$backend_pid" 2>/dev/null || { echo "API failed to start" >&2; exit 1; }
+    sleep 0.5
+  done
+fi
+
+echo "Navigator dev on the network (anyone who can reach these can use it):"
+printf '  %s\n' "${urls[@]}"
+cd "$ROOT/frontend"
+pnpm exec vite --host 0.0.0.0

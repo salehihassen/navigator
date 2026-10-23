@@ -4,7 +4,8 @@
 
 FROM node:24.22.1-alpine3.24 AS web
 WORKDIR /web
-RUN corepack enable
+# Node 25+ no longer bundles corepack; it installs the pnpm pinned in package.json
+RUN npm install -g corepack@0.36.0 && corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./

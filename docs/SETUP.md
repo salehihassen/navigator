@@ -78,6 +78,14 @@ scripts/dev-test      # ruff, mypy, pytest (database and storage tests included)
   127.0.0.1:5450 and `navigator-dev-storage` (Garage S3) on 127.0.0.1:9450. If either
   port is taken, `scripts/dev-up` stops and tells you. You can change the ports in
   `.dev/navigator.env`.
+- `scripts/dev2go` starts everything in one command (containers, API, web app) and
+  serves the web app on `0.0.0.0:5173`, so another computer or phone on the same LAN
+  or tailnet can open `http://<dev machine>:5173`. It prints this machine's addresses
+  and allows its hostname and Tailscale name at runtime, so nothing machine-specific
+  goes into git. Add other names with `NAVIGATOR_DEV_ALLOWED_HOSTS=a,b` in
+  `.dev/navigator.env`. Only port 5173 is exposed. The API, Postgres and Garage stay on
+  127.0.0.1 behind Vite's proxy. Anyone who can reach the port can use the app, so
+  don't run it on untrusted Wi-Fi.
 - `scripts/dev-down` stops the containers and keeps the data.
 - `scripts/dev-reset` deletes the `navigator-dev` containers and volumes, and nothing
   else. It asks you to type the project name first.

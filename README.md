@@ -25,6 +25,7 @@ Status: early development (M0). See [PLAN.md](PLAN.md) for the plan and
 scripts/dev-up                            # Postgres + Garage; writes .dev/navigator.env on first run
 scripts/dev-backend                       # migrate, then the API on :8930
 cd frontend && pnpm install && pnpm dev   # http://localhost:5173
+scripts/dev2go                            # all of the above in one go, open from other machines at http://<host>:5173
 scripts/dev-test                          # lint, types, tests
 ```
 
