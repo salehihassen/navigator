@@ -11,7 +11,7 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
-FROM python:3.14.9-slim-trixie AS build
+FROM python:3.15.0-slim-trixie AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12.3 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /src
@@ -20,7 +20,7 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY backend/src ./src
 RUN uv sync --locked --no-dev --no-editable
 
-FROM python:3.14.9-slim-trixie
+FROM python:3.15.0-slim-trixie
 LABEL org.opencontainers.image.source="https://github.com/salehihassen/navigator" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.description="Navigator: a multi-tenant atlas of past, planned and someday trips"
