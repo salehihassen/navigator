@@ -23,7 +23,7 @@ services:
       retries: 30
 
   storage:
-    image: dxflrs/garage:v2.4.1
+    image: dxflrs/garage:v2.5.0
     container_name: navigator-dev-storage
     environment:
       GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?}
